@@ -28,6 +28,17 @@ def make_oxe_dataset_kwargs(
     action_proprio_normalization_type = ACTION_PROPRIO_NORMALIZATION_TYPE,
 ) -> Dict[str, Any]:
     """Generates config (kwargs) for given dataset from Open-X Embodiment."""
+    # Auto-generate config for RLBench datasets (names starting with "rlbench_")
+    if dataset_name.startswith("rlbench_"):
+        return _make_rlbench_dataset_kwargs(
+            dataset_name, data_root_dir,
+            load_camera_views=load_camera_views,
+            load_depth=load_depth,
+            load_proprio=load_proprio,
+            load_language=load_language,
+            action_proprio_normalization_type=action_proprio_normalization_type,
+        )
+
     dataset_kwargs = deepcopy(OXE_DATASET_CONFIGS[dataset_name])
     if dataset_kwargs["action_encoding"] not in [ActionEncoding.EEF_POS, ActionEncoding.EEF_R6, ActionEncoding.JOINT_POS_BIMANUAL]:
         raise ValueError(f"Cannot load `{dataset_name}`; only EEF_POS & EEF_R6 & JOINT_POS_BIMANUAL actions supported!")
@@ -75,6 +86,58 @@ def make_oxe_dataset_kwargs(
     # Add any aux arguments
     if "aux_kwargs" in dataset_kwargs:
         dataset_kwargs.update(dataset_kwargs.pop("aux_kwargs"))
+
+    return {"name": dataset_name, "data_dir": str(data_root_dir), **dataset_kwargs}
+
+
+def _make_rlbench_dataset_kwargs(
+    dataset_name: str,
+    data_root_dir: Path,
+    load_camera_views: Tuple[str] = ("primary",),
+    load_depth: bool = False,
+    load_proprio: bool = True,
+    load_language: bool = True,
+    action_proprio_normalization_type = ACTION_PROPRIO_NORMALIZATION_TYPE,
+) -> Dict[str, Any]:
+    """Auto-generate config for RLBench datasets converted via convert_rlbench_to_rlds.py.
+
+    RLBench raw data has these observation keys inside each step:
+        front_rgb -> will be mapped to image_primary
+        wrist_rgb -> will be mapped to image_wrist
+        joint_positions (7,) + gripper_open (1,) -> concatenated to proprio (8,)
+
+    Actions are 7-dim delta: [dx,dy,dz, drx,dry,drz, dgripper].
+    Gripper action (last dim) is absolute; all position/rotation dims are relative.
+    """
+    dataset_kwargs = {
+        "image_obs_keys": {"primary": "front_rgb", "wrist": "wrist_rgb"},
+        "state_obs_keys": ["joint_positions", "gripper_open"],
+        "absolute_action_mask": [False] * 6 + [True],   # gripper is absolute
+        "action_normalization_mask": [True] * 6 + [False],  # don't normalize binary gripper
+        "action_proprio_normalization_type": action_proprio_normalization_type,
+    }
+
+    # Filter camera views
+    if len(missing_keys := (set(load_camera_views) - set(dataset_kwargs["image_obs_keys"]))) > 0:
+        raise ValueError(
+            f"Cannot load `{dataset_name}`; missing camera views `{missing_keys}`"
+        )
+    dataset_kwargs["image_obs_keys"] = {
+        k: v for k, v in dataset_kwargs["image_obs_keys"].items() if k in load_camera_views
+    }
+
+    # RLBench does not have depth
+    if load_depth:
+        dataset_kwargs["depth_obs_keys"] = {"primary": None, "wrist": None}
+
+    if not load_proprio:
+        dataset_kwargs.pop("state_obs_keys")
+
+    if load_language:
+        dataset_kwargs["language_key"] = "language_instruction"
+
+    # Use the shared rlbench transform (registered under "rlbench" key)
+    dataset_kwargs["standardize_fn"] = OXE_STANDARDIZATION_TRANSFORMS["rlbench"]
 
     return {"name": dataset_name, "data_dir": str(data_root_dir), **dataset_kwargs}
 

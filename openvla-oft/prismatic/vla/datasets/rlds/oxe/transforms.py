@@ -846,6 +846,19 @@ def aloha_dataset_transform(trajectory: Dict[str, Any]) -> Dict[str, Any]:
     return trajectory
 
 
+def rlbench_dataset_transform(trajectory: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    RLBench data is already in near-standard format.
+    The raw observation keys (front_rgb, wrist_rgb, joint_positions, gripper_open)
+    are mapped to the standard keys (image_primary, image_wrist, proprio) by the
+    restructure() function via image_obs_keys and state_obs_keys config.
+
+    This transform just ensures action dtype and validates key presence.
+    """
+    trajectory["action"] = tf.cast(trajectory["action"], tf.float32)
+    return trajectory
+
+
 # === Registry ===
 OXE_STANDARDIZATION_TRANSFORMS = {
     "bridge_oxe": bridge_oxe_dataset_transform,
@@ -930,4 +943,6 @@ OXE_STANDARDIZATION_TRANSFORMS = {
     "aloha1_fold_shirt_30_demos": aloha_dataset_transform,
     "aloha1_scoop_X_into_bowl_45_demos": aloha_dataset_transform,
     "aloha1_put_X_into_pot_300_demos": aloha_dataset_transform,
+    # RLBench datasets -- lightweight pass-through (data already in standard format)
+    "rlbench": rlbench_dataset_transform,
 }

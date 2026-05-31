@@ -16,14 +16,11 @@ from rlbench.action_modes.gripper_action_modes import Discrete
 from rlbench.backend.observation import Observation
 from rlbench.tasks import (
     CloseJar,
-    InsertOntoSquarePeg,
-    MeatOffGrill,
-    PickAndLift,
-    ReachAndDrag,
-    SlideBlockToTarget,
-    SweepToDustpan,
-    TakeLidOffSaucepan,
-    TurnTap,
+    MoveHanger,
+    PlaceHangerOnRack,
+    PlayJenga,
+    PutKnifeOnChoppingBoard,
+    TakeUmbrellaOutOfUmbrellaStand,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,42 +30,37 @@ logger = logging.getLogger(__name__)
 # These 9 tasks require fine spatial understanding and are compatible with
 # the Evo-0 paper's design philosophy.
 
+# Five RLBench tasks from Evo-0 paper (Section IV.A), covering three categories:
+#   1. Precise grasping and transport: PlayJenga, TakeUmbrellaOutOfUmbrellaStand
+#   2. Precise grasping and placement: PutKnifeOnChoppingBoard
+#   3. Precise motion under height/translation variation: PlaceHangerOnRack, MoveHanger
 RLBENCH_TASK_CLASSES = {
     "close_jar": CloseJar,
-    "meat_off_grill": MeatOffGrill,
-    "insert_onto_square_peg": InsertOntoSquarePeg,
-    "pick_and_lift": PickAndLift,
-    "reach_and_drag": ReachAndDrag,
-    "slide_block_to_target": SlideBlockToTarget,
-    "sweep_to_dustpan": SweepToDustpan,
-    "take_lid_off_saucepan": TakeLidOffSaucepan,
-    "turn_tap": TurnTap,
+    "play_jenga": PlayJenga,
+    "put_knife_on_chopping_board": PutKnifeOnChoppingBoard,
+    "take_umbrella_out_of_umbrella_stand": TakeUmbrellaOutOfUmbrellaStand,
+    "place_hanger_on_rack": PlaceHangerOnRack,
+    "move_hanger": MoveHanger,
 }
 
 # Task language instructions (used in VLA prompt)
 RLBENCH_TASK_INSTRUCTIONS = {
     "close_jar": "close the jar",
-    "meat_off_grill": "take the meat off the grill",
-    "insert_onto_square_peg": "insert the object onto the square peg",
-    "pick_and_lift": "pick up the object and lift it",
-    "reach_and_drag": "reach the target and drag it to the goal",
-    "slide_block_to_target": "slide the block to the target position",
-    "sweep_to_dustpan": "sweep the objects into the dustpan",
-    "take_lid_off_saucepan": "take the lid off the saucepan",
-    "turn_tap": "turn the tap",
+    "play_jenga": "play jenga",
+    "put_knife_on_chopping_board": "put the knife on the chopping board",
+    "take_umbrella_out_of_umbrella_stand": "take the umbrella out of the umbrella stand",
+    "place_hanger_on_rack": "place the hanger on the rack",
+    "move_hanger": "move the hanger",
 }
 
 # Maximum episode steps per task (generous upper bound)
 RLBENCH_TASK_MAX_STEPS = {
-    "close_jar": 150,
-    "meat_off_grill": 200,
-    "insert_onto_square_peg": 200,
-    "pick_and_lift": 150,
-    "reach_and_drag": 200,
-    "slide_block_to_target": 200,
-    "sweep_to_dustpan": 200,
-    "take_lid_off_saucepan": 200,
-    "turn_tap": 200,
+    "close_jar": 200,
+    "play_jenga": 250,
+    "put_knife_on_chopping_board": 200,
+    "take_umbrella_out_of_umbrella_stand": 200,
+    "place_hanger_on_rack": 200,
+    "move_hanger": 200,
 }
 
 

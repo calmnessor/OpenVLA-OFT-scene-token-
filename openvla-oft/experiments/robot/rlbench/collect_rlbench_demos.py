@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 
-def collect_demos_for_task(task_name, task_class, num_demos, output_dir, headless=True, image_size=(256, 256)):
+def collect_demos_for_task(task_name, task_class, num_demos, output_dir, headless=True, image_size=(256, 256), overwrite=False):
     """
     Collect demonstrations for a single RLBench task using the keyframe extractor.
 
@@ -45,10 +45,14 @@ def collect_demos_for_task(task_name, task_class, num_demos, output_dir, headles
     The scripted policy extracts these keyframes, uses a motion planner to move
     between them, and we record all observations along the way.
     """
-    output_path = os.path.join(output_dir, f"{task_name}.hdf5")
-    if os.path.exists(output_path):
-        logger.info(f"  Output already exists: {output_path}")
+    # Use absolute path to guard against CWD changes by RLBench/CoppeliaSim
+    output_path = os.path.abspath(os.path.join(output_dir, f"{task_name}.hdf5"))
+    if os.path.exists(output_path) and not overwrite:
+        logger.info(f"  Output already exists: {output_path} (use --overwrite to replace)")
         return output_path
+    elif os.path.exists(output_path):
+        logger.info(f"  Removing existing: {output_path}")
+        os.remove(output_path)
 
     logger.info(f"  Collecting {num_demos} demos for '{task_name}'...")
 
@@ -179,6 +183,7 @@ def main(args):
             output_dir=args.output_dir,
             headless=args.headless,
             image_size=tuple(args.image_size),
+            overwrite=args.overwrite,
         )
 
     logger.info("Demo collection complete!")
@@ -194,6 +199,8 @@ if __name__ == "__main__":
                         help="Output directory for HDF5 files")
     parser.add_argument("--headless", type=bool, default=True,
                         help="Run headless (no GUI)")
+    parser.add_argument("--overwrite", action="store_true", default=False,
+                        help="Overwrite existing HDF5 files")
     parser.add_argument("--image_size", type=int, nargs=2, default=[256, 256],
                         help="Camera image resolution (height width)")
     args = parser.parse_args()

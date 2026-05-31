@@ -101,14 +101,20 @@ def run_episode(
     cfg, env, task, task_name, model, resize_size, processor=None,
     action_head=None, proprio_projector=None, noisy_action_projector=None,
 ):
-    """Run a single evaluation episode."""
+    """Run a single evaluation episode.
+
+    The model predicts 7-dim delta actions: [dx,dy,dz, drx,dry,drz, target_gripper].
+    RLBench's EndEffectorPoseViaPlanning expects 8-dim absolute actions:
+    [x,y,z, qx,qy,qz,qw, gripper_open]. This function converts between the two.
+    """
+    from scipy.spatial.transform import Rotation as Rot
+
     descriptions, obs = task.reset()
-    # Use the first variation's description
     lang = task_name.replace("_", " ")
 
-    # Wait for objects to stabilize
+    # Wait for objects to stabilize (RLBench step expects 8-dim action)
     for _ in range(cfg.num_steps_wait):
-        obs, reward, done = task.step(np.zeros(7 if cfg.num_open_loop_steps == 1 else 7))
+        obs, reward, done = task.step(np.zeros(8))
 
     action_queue = deque(maxlen=cfg.num_open_loop_steps)
     max_steps = RLBENCH_TASK_MAX_STEPS.get(task_name, 200)
@@ -141,15 +147,31 @@ def run_episode(
                 )
                 action_queue.extend(actions)
 
-            action = action_queue.popleft()
+            delta_action = action_queue.popleft()  # [dx,dy,dz, drx,dry,drz, target_gripper]
 
-            # Process action for RLBench
-            action = normalize_gripper_action(action, binarize=True)
+            # Process gripper: model outputs absolute target in [0,1], binarize
+            delta_action = normalize_gripper_action(delta_action, binarize=True)
             if cfg.model_family == "openvla":
-                action = invert_gripper_action(action)
+                delta_action = invert_gripper_action(delta_action)
+
+            # Convert 7-dim delta to 8-dim absolute action for RLBench
+            current_pose = obs.gripper_pose  # [x, y, z, qx, qy, qz, qw]
+            rlbench_action = np.zeros(8, dtype=np.float32)
+
+            # Position: absolute = current + delta
+            rlbench_action[:3] = current_pose[:3] + delta_action[:3]
+
+            # Orientation: absolute = delta_rotation @ current_rotation
+            r_current = Rot.from_quat(current_pose[3:])
+            r_delta = Rot.from_rotvec(delta_action[3:6])
+            r_target = r_delta * r_current
+            rlbench_action[3:7] = r_target.as_quat()
+
+            # Gripper: absolute target (already binarized to 0 or 1)
+            rlbench_action[7] = float(np.clip(delta_action[6], 0.0, 1.0))
 
             # Execute
-            obs, reward, done = task.step(action.tolist())
+            obs, reward, done = task.step(rlbench_action.tolist())
             if done:
                 success = True
                 break
