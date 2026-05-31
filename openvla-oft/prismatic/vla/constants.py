@@ -44,12 +44,21 @@ BRIDGE_CONSTANTS = {
     "ACTION_PROPRIO_NORMALIZATION_TYPE": NormalizationType.BOUNDS_Q99,
 }
 
+RLBENCH_CONSTANTS = {
+    "NUM_ACTIONS_CHUNK": 1,      # Keyframe prediction (single action per step)
+    "ACTION_DIM": 7,             # delta_xyz(3) + delta_rot(3) + gripper(1)
+    "PROPRIO_DIM": 8,            # joint_positions(7) + gripper_open(1)
+    "ACTION_PROPRIO_NORMALIZATION_TYPE": NormalizationType.BOUNDS_Q99,
+}
+
 
 # Function to detect robot platform from command line arguments
 def detect_robot_platform():
     cmd_args = " ".join(sys.argv).lower()
 
-    if "libero" in cmd_args:
+    if "rlbench" in cmd_args:
+        return "RLBENCH"
+    elif "libero" in cmd_args:
         return "LIBERO"
     elif "aloha" in cmd_args:
         return "ALOHA"
@@ -68,6 +77,8 @@ if ROBOT_PLATFORM == "LIBERO":
     constants = LIBERO_CONSTANTS
 elif ROBOT_PLATFORM == "ALOHA":
     constants = ALOHA_CONSTANTS
+elif ROBOT_PLATFORM == "RLBENCH":
+    constants = RLBENCH_CONSTANTS
 elif ROBOT_PLATFORM == "BRIDGE":
     constants = BRIDGE_CONSTANTS
 
