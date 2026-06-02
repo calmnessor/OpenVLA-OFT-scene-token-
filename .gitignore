@@ -17,3 +17,5 @@ checkpoints/
 *.zip
 .DS_Store
 Thumbs.db
+videos_close_jar_*/
+saved_from_server/
