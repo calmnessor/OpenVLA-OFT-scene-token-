@@ -41,10 +41,37 @@ torchrun --standalone --nnodes 1 --nproc-per-node X vla-scripts/finetune.py \
 - [ ] Cross-attention 方案：vision tokens 作为 Query，VGGT patch tokens 作为 Key/Value（替代当前简单拼接）
 - [ ] RLBench 平台迁移评估
 
+## 目录结构
+
+```
+code/                           # 代码项目
+├── openvla-oft/                # OpenVLA-OFT 主代码库
+├── AAAI26-SemanticVLA/         # AAAI26-SemanticVLA 改进版本
+├── vggt-omega/                 # VGGT-Omega 3D 场景理解
+├── dlimp_openvla/              # DLimp 数据管道库
+└── deploy/                     # 部署脚本（训练启动、checkpoint 下载等）
+
+docs/                           # 文档与方案分析
+├── VGGT-Omega_OpenVLA-OFT_融合框架.md
+├── SD-Pruner_SH-Fuser集成VGGT-Omega场景分析.md
+├── 项目架构与微调指南.md
+├── RLBench数据管道使用指南.md
+└── 新服务器迁移指南.md
+
+papers/                         # 论文资料
+├── 论文/
+└── 论文笔记/
+
+config/                         # 实验环境配置
+└── 实验环境/
+
+saved_from_server/              # 从云服务器保存的模型/数据（gitignore）
+```
+
 ## 关键修改文件
 
 ```
-openvla-oft/
+code/openvla-oft/
 ├── vla-scripts/finetune.py              # VGGTSceneExtractor、训练配置、主循环
 ├── prismatic/extern/hf/modeling_prismatic.py  # _process_scene_tokens()、forward 流程
 ├── prismatic/models/scene_projector.py  # SceneProjector: Linear(2048→4096) + LayerNorm
