@@ -158,6 +158,7 @@ class FinetuneConfig:
     use_lora: bool = True                            # If True, uses LoRA fine-tuning
     lora_rank: int = 32                              # Rank of LoRA weight matrix
     lora_dropout: float = 0.0                        # Dropout applied to LoRA weights
+    lora_target_modules: str = "all-linear"         # Comma-separated target modules for LoRA (or "all-linear")
     merge_lora_during_training: bool = True          # If True, merges LoRA weights and saves result during training
                                                      #   Note: Merging can be very slow on some machines. If so, set to
                                                      #         False and merge final checkpoint offline!
@@ -682,7 +683,8 @@ def save_training_checkpoint(
         print(f"Saving Model Checkpoint for Step {log_step}")
 
     # Wait for directories to be created
-    dist.barrier()
+    if dist.is_initialized():
+        dist.barrier()
 
     # Save model components (main process only)
     if distributed_state.is_main_process:
@@ -702,6 +704,12 @@ def save_training_checkpoint(
         if (cfg.use_l1_regression or cfg.use_diffusion) and action_head is not None:
             torch.save(action_head.state_dict(), checkpoint_dir / f"action_head--{checkpoint_name_suffix}")
 
+        if cfg.use_scene_tokens:
+            torch.save(
+                vla.module.scene_projector.state_dict(),
+                checkpoint_dir / f"scene_projector--{checkpoint_name_suffix}",
+            )
+
         if cfg.use_film:
             # To be safe, just save the entire vision backbone (not just FiLM components)
             torch.save(
@@ -709,23 +717,41 @@ def save_training_checkpoint(
             )
 
     # Wait for model components to be saved
-    dist.barrier()
+    if dist.is_initialized():
+        dist.barrier()
 
     # Merge LoRA weights into base model and save resulting model checkpoint
     # Note: Can be very slow on some devices; if so, we recommend merging offline
     if cfg.use_lora and cfg.merge_lora_during_training:
+        # Save trained scene_projector state from current model before merging
+        # (base checkpoint lacks SceneProjector, so merge would lose trained scene_norm)
+        trained_scene_projector_state = None
+        if cfg.use_scene_tokens and distributed_state.is_main_process:
+            trained_scene_projector_state = {
+                k: v.cpu().clone()
+                for k, v in vla.module.scene_projector.state_dict().items()
+            }
+
+        if dist.is_initialized():
+            dist.barrier()
+
         base_vla = AutoModelForVision2Seq.from_pretrained(
             cfg.vla_path, torch_dtype=torch_dtype, trust_remote_code=True, device_map="cpu"
         )
         merged_vla = PeftModel.from_pretrained(base_vla, adapter_dir)
         merged_vla = merged_vla.merge_and_unload()
 
+        # Restore trained scene_projector (preserves scene_norm trained weights)
+        if trained_scene_projector_state is not None:
+            merged_vla.scene_projector.load_state_dict(trained_scene_projector_state, strict=True)
+
         if distributed_state.is_main_process:
             merged_vla.save_pretrained(checkpoint_dir, safe_serialization=False)
             print(f"Saved merged model for Step {log_step} at: {checkpoint_dir}")
 
         # Wait for merged model to be saved
-        dist.barrier()
+        if dist.is_initialized():
+            dist.barrier()
 
 
 def run_validation(
@@ -870,7 +896,14 @@ def finetune(cfg: FinetuneConfig) -> None:
 
     # Initialize wandb logging
     if distributed_state.is_main_process:
-        wandb.init(entity=cfg.wandb_entity, project=cfg.wandb_project, name=f"ft+{run_id}")
+        try:
+            wandb.init(entity=cfg.wandb_entity, project=cfg.wandb_project, name=f"ft+{run_id}", mode="online")
+            print(f"[WandB] Initialized — entity={cfg.wandb_entity}, project={cfg.wandb_project}, run=ft+{run_id}")
+            print(f"[WandB] Run URL: {wandb.run.url}")
+        except Exception as e:
+            print(f"[WandB] Failed to init: {e}")
+            print(f"[WandB] Running without wandb logging")
+            wandb.init(mode="disabled")
 
     # Print detected constants
     print(
@@ -908,7 +941,8 @@ def finetune(cfg: FinetuneConfig) -> None:
         check_model_logic_mismatch(cfg.vla_path)
 
     # Wait for model files to be synced
-    dist.barrier()
+    if dist.is_initialized():
+        dist.barrier()
 
     # Load processor and VLA
     processor = AutoProcessor.from_pretrained(cfg.vla_path, trust_remote_code=True)
@@ -937,10 +971,12 @@ def finetune(cfg: FinetuneConfig) -> None:
             r=cfg.lora_rank,
             lora_alpha=min(cfg.lora_rank, 16),
             lora_dropout=cfg.lora_dropout,
-            target_modules="all-linear",
+            target_modules=cfg.lora_target_modules.split(",") if cfg.lora_target_modules else "all-linear",
             init_lora_weights="gaussian",
         )
         vla = get_peft_model(vla, lora_config)
+
+
         vla.print_trainable_parameters()
 
     # FiLM setup

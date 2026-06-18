@@ -679,6 +679,40 @@ def normalize_proprio(proprio: np.ndarray, norm_stats: Dict[str, Any]) -> np.nda
     return normalized_proprio
 
 
+
+def extract_vggt_scene_tokens(obs, vggt_extractor):
+    """Extract VGGT-Omega scene tokens from observation images.
+
+    Takes agentview + eye_in_hand images, preprocesses to VGGT format,
+    and returns scene register tokens [1, 32, 1024].
+    """
+    import torch
+    from PIL import Image
+    from vggt_omega.utils.load_fn import load_and_preprocess_images
+    import tempfile, os
+
+    agentview = obs.get("agentview_image", obs.get("full_image"))
+    wrist_img = obs.get("robot0_eye_in_hand_image", obs.get("wrist_image"))
+
+    # Save images as temp files for VGGT preprocessing
+    tmpdir = tempfile.mkdtemp()
+    paths = []
+    for img_arr in [agentview, wrist_img]:
+        p = os.path.join(tmpdir, f"img_{len(paths)}.png")
+        Image.fromarray(img_arr).save(p)
+        paths.append(p)
+
+    try:
+        images_512 = load_and_preprocess_images(paths, mode="balanced", image_resolution=512, patch_size=16)
+        images_512 = images_512.unsqueeze(0)  # add batch dim
+        scene_tokens = vggt_extractor.extract_scene_tokens(images_512)
+    finally:
+        import shutil
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+    return scene_tokens.to(torch.bfloat16)
+
+
 def prepare_images_for_vla(images: List[np.ndarray], cfg: Any) -> List[Image.Image]:
     """
     Prepare images for VLA input by resizing and cropping as needed.
@@ -721,6 +755,7 @@ def get_vla_action(
     action_head: Optional[torch.nn.Module] = None,
     proprio_projector: Optional[torch.nn.Module] = None,
     noisy_action_projector: Optional[torch.nn.Module] = None,
+    vggt_extractor: Any = None,
     use_film: bool = False,
 ) -> List[np.ndarray]:
     """
@@ -777,10 +812,15 @@ def get_vla_action(
             obs["state"] = normalize_proprio(proprio, proprio_norm_stats)
             proprio = obs["state"]
 
+        # Extract scene tokens from VGGT if available
+        scene_tokens = None
+        if vggt_extractor is not None:
+            scene_tokens = extract_vggt_scene_tokens(obs, vggt_extractor)
+
         # Generate action
         if action_head is None:
             # Standard VLA output (single-image inputs, discrete actions)
-            action, _ = vla.predict_action(**inputs, unnorm_key=cfg.unnorm_key, do_sample=False)
+            action, _ = vla.predict_action(**inputs, unnorm_key=cfg.unnorm_key, do_sample=False, scene_tokens=scene_tokens)
         else:
             # Custom action head for continuous actions
             action, _ = vla.predict_action(
@@ -791,6 +831,7 @@ def get_vla_action(
                 proprio_projector=proprio_projector,
                 noisy_action_projector=noisy_action_projector,
                 action_head=action_head,
+                scene_tokens=scene_tokens,
                 use_film=use_film,
             )
 

@@ -105,6 +105,7 @@ def get_action(
     action_head: Optional[torch.nn.Module] = None,
     proprio_projector: Optional[torch.nn.Module] = None,
     noisy_action_projector: Optional[torch.nn.Module] = None,
+    vggt_extractor: Any = None,
     use_film: bool = False,
 ) -> Union[List[np.ndarray], np.ndarray]:
     """
@@ -138,6 +139,7 @@ def get_action(
                 action_head=action_head,
                 proprio_projector=proprio_projector,
                 noisy_action_projector=noisy_action_projector,
+                vggt_extractor=vggt_extractor,
                 use_film=use_film,
             )
         else:
