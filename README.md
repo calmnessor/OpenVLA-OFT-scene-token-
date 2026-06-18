@@ -1,10 +1,10 @@
 # VGGT-Ω + OpenVLA-OFT: 3D Geometry-Aware Vision-Language-Action Policy
 
-Reproduction of the VGGT-Ω Section 4.4 experiment: integrating frozen VGGT-Ω scene tokens as a 3D geometry prior into OpenVLA-OFT for robot manipulation.
+Reproduction of VGGT-Ω Section 4.4: integrating frozen VGGT-Ω scene tokens (register tokens) as a 3D geometry prior into OpenVLA-OFT for robot manipulation.
 
 ## Motivation
 
-Vision-Language-Action (VLA) models struggle with **spatial reasoning** — they see 2D pixels but need to reason in 3D. VGGT-Ω learns rich 3D geometric representations from multi-view reconstruction. The idea: inject VGGT-Ω's learned 3D knowledge into OpenVLA-OFT's action prediction pipeline via a lightweight projector, without fine-tuning the geometry model.
+VLA models struggle with **spatial reasoning** — they see 2D pixels but need to reason in 3D. VGGT-Ω learns rich 3D geometric representations from multi-view reconstruction. We inject VGGT-Ω's 3D knowledge into OpenVLA-OFT by concatenating scene register tokens with vision patch embeddings via a lightweight linear projector.
 
 ## Architecture
 
@@ -16,85 +16,142 @@ Images @ 512px                        Images @ 224px
   DINOv3 ViT                         SigLIP + DINOv2
      │                                       │
 Register Tokens                       Patch Tokens
- [B, N×16, 1024]                      [B, 768, 4096]
+ [B, N×16, 2048]                      [B, 768, 4096]
      │                                       │
 SceneProjector                             concat ← Proprio [1, 4096]
- Linear(1024→4096)                              │
- LayerNorm                                 concat ← Scene Tokens [B, N×16, 4096]
+ Linear(2048→4096)                              │
+ (pure Linear, no norm)                    concat ← Scene Tokens [B, N×16, 4096]
      │                                       │
  [B, N×16, 4096] ────────────────────────────┘
      │
      ▼
- Llama-7B (LoRA) → L1 Action Head → 7-DOF Continuous Actions × 8-step Chunk
+ Llama-7B (LoRA) → L1RegressionActionHead → 7-DOF × 8-step chunk
 ```
 
-**Per VGGT-Ω paper (Section 4.4):**
-> "Given the input images, we extract registers (scene tokens) from VGGT-Ω and concatenate them with the original OpenVLA-OFT input tokens."
+**Key design choice**: SceneProjector uses a pure `nn.Linear(2048, 4096, bias=True)` without LayerNorm. VGGT-Ω tokens are already well-normalized, and the LLM's internal RMSNorm handles any remaining distribution mismatch. LayerNorm in bfloat16 cannot receive training updates at value 1.0 (precision trap).
+
+> Per VGGT-Ω (Section 4.4): *"Given the input images, we extract registers (scene tokens) from VGGT-Ω and concatenate them with the original OpenVLA-OFT input tokens."*
+
+## Results
+
+### LIBERO-Spatial (10 tasks × 50 trials = 500 episodes)
+
+| | Success Rate |
+|---|---|
+| OpenVLA-OFT (paper baseline) | 97.6% |
+| VGGT-Ω + OpenVLA-OFT (paper) | **99.3%** |
+| **This reproduction (10K steps)** | **92.8%** |
+
+Per-task breakdown:
+
+| Task | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|------|---|---|---|---|---|---|---|---|---|----|
+| Rate | 100% | 96% | 100% | 94% | 98% | 48% | 100% | 96% | 96% | 100% |
+
+- 9/10 tasks ≥ 94%, 4 tasks at perfect 100%
+- Task 6 is the only bottleneck (48%); overall average still 92.8%
+- Training only 10K optimizer steps (~5% of paper's 200K); further training should close the gap
 
 ## Key Implementation Details
 
 | Component | Detail |
 |-----------|--------|
-| Base VLA | OpenVLA-7B (Prismatic VLM + Llama-7B) |
-| Geometry Encoder | VGGT-Ω 1B, 16 register tokens/frame, **frozen** |
-| Scene Projector | `Linear(1024→4096) + LayerNorm`, ~8M params, trainable |
-| LLM Fine-tuning | LoRA rank=32 (~111M trainable params) |
-| Action Head | L1 Regression (continuous 7-DOF actions) |
-| Input | 3 camera views @ 224px (VLA) + 3 views @ 512px (VGGT) + language instruction |
+| Base VLA | OpenVLA-7B (Prismatic VLM + Llama-7B), OFT pre-trained checkpoint |
+| Geometry Encoder | VGGT-Ω 1B @ 512px, 16 register tokens/frame, **frozen** |
+| Scene Projector | `Linear(2048→4096, bias=True)`, ~8.4M params, trainable |
+| LLM Fine-tuning | LoRA rank=32, target: q/k/v/o/gate/up/down_proj |
+| Action Head | L1RegressionActionHead (2-block MLP ResNet), loaded from OFT 150K checkpoint |
+| Input | 2 camera views @ 224px (VLA) + 2 views @ 512px (VGGT) + proprio + instruction |
 | Precision | bfloat16 |
-| Dataset | LIBERO (Spatial / Object / Goal / 10) in RLDS format |
+| Effective Batch | 8 (batch_size=1 × grad_accum=8) |
+| Learning Rate | 5e-4, no warmup, MultiStepLR (milestone=100K, gamma=0.1) |
+| Optimizer | AdamW |
+
+## Training
+
+```bash
+cd openvla-oft
+python vla-scripts/train_vggt_launch.py
+```
+
+Config is defined in `train_vggt_launch.py`:
+
+```python
+vla_path = "/root/checkpoints/openvla-7b-oft-finetuned-libero-spatial"
+vggt_checkpoint = "/root/checkpoints/vggt_omega_1b_512/vggt_omega_1b_512.pt"
+dataset_name = "libero_spatial_no_noops"
+use_scene_tokens = True
+use_l1_regression = True
+use_proprio = True
+num_images_in_input = 2
+lora_rank = 32
+lora_target_modules = "q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj"
+merge_lora_during_training = False  # Must be False to avoid OOM
+learning_rate = 5e-4
+lr_warmup_steps = 0
+max_steps = 10000
+grad_accumulation_steps = 8
+batch_size = 1
+resume = True  # Load pre-trained action head from OFT checkpoint
+resume_step = 150000
+torch_dtype = "bfloat16"
+```
+
+**Hardware**: RTX 4090 48GB GPU + 15GB RAM. With `merge_lora_during_training=False` and `shuffle_buffer_size=20K`, peak RAM usage stays within limits.
+
+## Evaluation
+
+```bash
+cd openvla-oft
+python vla-scripts/run_eval_vggt.py
+```
+
+Evaluation config:
+- LIBERO-Spatial, 10 tasks × 50 trials
+- scene tokens enabled, 2 views @ 256px
+- 8-step open-loop, center crop
+- Uses merged model at `runs/vggt-eval-checkpoint/`
+
+## Merging LoRA for Evaluation
+
+```bash
+python vla-scripts/merge_for_eval.py
+```
+
+**Important**: After merging, verify that `scene_projector.projector.bias` is non-zero. The merge script must restore trained SceneProjector weights from `scene_projector--latest_checkpoint.pt` — if the base model checkpoint lacks SceneProjector weights, they are initialized to zero and the merge will silently lose trained scene projection parameters, causing severe performance degradation (observed drop: 92.8% → 32.2%).
 
 ## Core Files
 
 ```
 openvla-oft/
-├── vla-scripts/finetune.py                         # Training entry point
+├── vla-scripts/
+│   ├── train_vggt_launch.py          # Training entry point
+│   ├── finetune.py                   # Training loop (modified for scene tokens)
+│   ├── run_eval_vggt.py              # LIBERO-Spatial evaluation
+│   └── merge_for_eval.py             # LoRA merge + SceneProjector restore
 ├── prismatic/
-│   ├── extern/hf/modeling_prismatic.py             # VLA forward with scene token integration
-│   └── models/scene_projector.py                   # Linear + LayerNorm scene projector
-└── experiments/robot/libero/run_libero_eval.py    # LIBERO evaluation
-
-vggt-omega/
-└── vggt_omega/models/                             # VGGT-Ω model (frozen, inference-only)
+│   ├── extern/hf/modeling_prismatic.py  # VLA forward with scene token concat
+│   └── models/scene_projector.py        # Linear(2048→4096) scene projector
+└── experiments/robot/
+    ├── robot_utils.py                   # VGGT-Ω scene token extraction
+    └── openvla_utils.py                 # VLA inference utilities
 ```
-
-## Expected Results (from VGGT-Ω Table 3)
-
-| Method | Spatial | Object | Goal | Long | Avg |
-|--------|---------|--------|------|------|-----|
-| OpenVLA-OFT (baseline) | 97.6% | 98.4% | 97.9% | 94.5% | 97.1% |
-| **+ VGGT-Ω Frozen Scene Tokens** | **99.3%** | **99.2%** | **99.0%** | **96.7%** | **98.5%** |
-
-Largest gain on **Long tasks (+2.2%)**, indicating that 3D geometry priors most benefit long-horizon spatial reasoning.
-
-## Training
-
-```bash
-torchrun --standalone --nnodes 1 --nproc-per-node 1 vla-scripts/finetune.py \
-    --vla_path "openvla/openvla-7b" \
-    --data_root_dir ~/datasets/modified_libero_rlds \
-    --dataset_name libero_spatial_no_noops \
-    --use_l1_regression True \
-    --use_scene_tokens True \
-    --vggt_checkpoint ~/checkpoints/vggt_omega_1b_512/model.pt \
-    --num_images_in_input 3 \
-    --use_proprio True \
-    --batch_size 2 \
-    --grad_accumulation_steps 4 \
-    --learning_rate 5e-4 \
-    --lora_rank 32 \
-    --max_steps 150005
-```
-
-**Requirements:** 1× A100/A800 80GB or A100 40GB with `--load_in_8bit True`.
 
 ## Dependencies
 
-- PyTorch 2.2.0, CUDA 12.1+, bfloat16 support
-- OpenAI VLA: [OpenVLA-OFT](https://github.com/moojink/openvla-oft)
-- Geometry: [VGGT-Ω](https://github.com/facebookresearch/vggt) (checkpoint access required)
-- Benchmark: [LIBERO](https://github.com/Lifelong-Robot-Learning/LIBERO)
-- Flash Attention 2
+- PyTorch 2.5.0, CUDA 12.4, bfloat16
+- OpenVLA-OFT: [github.com/moojink/openvla-oft](https://github.com/moojink/openvla-oft)
+- VGGT-Ω: [github.com/facebookresearch/vggt](https://github.com/facebookresearch/vggt)
+- LIBERO: [github.com/Lifelong-Robot-Learning/LIBERO](https://github.com/Lifelong-Robot-Learning/LIBERO)
+- transformers 4.44.2, peft, robosuite, mujoco
+
+## Known Issues
+
+1. **bfloat16 LayerNorm precision trap**: At value 1.0, bfloat16 resolution is ~0.0078. Gradients for LayerNorm weights fall below this threshold, preventing training. Solution: remove LayerNorm from SceneProjector (pure Linear).
+
+2. **Merge corruption**: `merge_for_eval.py` must restore trained SceneProjector weights from the training checkpoint. If skipped, the merged model uses randomly initialized SceneProjector weights and success rate drops to ~30%.
+
+3. **OOM during merge**: `merge_lora_during_training=True` loads the full 7B model on CPU during checkpoint save, doubling memory. Keep it `False` on 15GB RAM machines.
 
 ## Acknowledgments
 
