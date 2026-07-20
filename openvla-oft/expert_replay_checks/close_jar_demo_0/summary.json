@@ -1,0 +1,62 @@
+{
+  "hdf5": "/home/jovyan/home/suziyang/datasets/rlbench_raw_v2/close_jar.hdf5",
+  "task": "close_jar",
+  "demo": "demo_0",
+  "root_attrs": {
+    "action_encoding": "delta_xyz_delta_rotvec_absolute_gripper",
+    "image_size": "[256 256]",
+    "num_collected_demos": "93",
+    "num_requested_demos": "100",
+    "schema_version": "2",
+    "task_name": "close_jar"
+  },
+  "demo_attrs": {
+    "action_encoding": "delta_xyz_delta_rotvec_absolute_gripper",
+    "language_instruction": "close the jar",
+    "num_reset_attempts": "1",
+    "num_steps": "166",
+    "num_transitions": "165",
+    "success": "True",
+    "variation_index": "0"
+  },
+  "offline_alignment": {
+    "num_steps": 166,
+    "num_transitions": 165,
+    "action_shape": [
+      165,
+      7
+    ],
+    "expected_action_shape": [
+      165,
+      7
+    ],
+    "finite_actions": true,
+    "shape_ok": true,
+    "action_encoding": "delta_xyz_delta_rotvec_absolute_gripper",
+    "max_position_alignment_error_m": 0.0,
+    "max_rotation_alignment_error_rad": 1.8557969466703739e-09,
+    "max_gripper_alignment_error": 0.0,
+    "gripper_alignment_source": "expert/gripper_command[1:]",
+    "delta_pos_norm_mm": {
+      "min": 0.0,
+      "mean": 8.61830997467041,
+      "p95": 19.45949592590332,
+      "max": 20.425539016723633
+    },
+    "delta_rot_norm_rad": {
+      "min": 0.0,
+      "mean": 0.011364320293068886,
+      "p95": 0.05024813637137413,
+      "max": 0.05078750103712082
+    },
+    "gripper_command_counts": {
+      "close_0": 97,
+      "open_1": 68
+    },
+    "expert_action_valid_ok": true,
+    "all_checks_passed": true
+  },
+  "online_replay": {
+    "executed": false
+  }
+}

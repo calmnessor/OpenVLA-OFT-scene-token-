@@ -1,0 +1,32 @@
+# Runtime artifacts
+runs/
+wandb/
+logs/
+experiments/logs/
+videos_eval/
+videos_eval_multi/
+*.log
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Python/cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Large model/data artifacts
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.npy
+*.npz
+*.h5
+*.hdf5
+*.so
+libcoppeliaSim.so.1
