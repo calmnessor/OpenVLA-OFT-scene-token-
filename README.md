@@ -156,3 +156,18 @@ openvla-oft/
 ## Acknowledgments
 
 Based on [VGGT-Ω](https://vggt-omega.github.io/) (Meta FAIR) and [OpenVLA-OFT](https://openvla-oft.github.io/) (Stanford/MIT).
+
+## License
+
+This is a multi-license repository:
+
+- Original integration work is available under the MIT terms described in
+  [`LICENSE`](LICENSE).
+- OpenVLA-OFT-derived portions retain the upstream MIT license and copyright
+  notice in [`LICENSES/OpenVLA-OFT-MIT.txt`](LICENSES/OpenVLA-OFT-MIT.txt).
+- VGGT-derived materials are governed by the VGGT License and Acceptable Use
+  Policy in [`LICENSES/VGGT-LICENSE.txt`](LICENSES/VGGT-LICENSE.txt); they are
+  not relicensed under MIT.
+
+See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for attribution and
+license scope details.
