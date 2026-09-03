@@ -1,0 +1,46 @@
+MULTI-LICENSE NOTICE
+
+This repository contains original integration work and third-party-derived
+components. Different portions are governed by different licenses.
+
+1. Original contributions
+
+Unless a file or directory states otherwise, original contributions authored
+for this repository by Fei Zuo are licensed under the MIT License below.
+
+MIT License
+
+Copyright (c) 2026 Fei Zuo
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of the original contributions and associated documentation files (the
+"Software"), to deal in the Software without restriction, including without
+limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom
+the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+2. OpenVLA-OFT-derived portions
+
+Portions derived from OpenVLA-OFT remain subject to its MIT License and
+copyright notice, reproduced at LICENSES/OpenVLA-OFT-MIT.txt.
+
+3. VGGT-derived portions
+
+VGGT-derived code, algorithms, models, weights, documentation, and derivative
+works are NOT covered by the MIT grant above. They remain subject to the VGGT
+License and its Acceptable Use Policy, reproduced at
+LICENSES/VGGT-LICENSE.txt. Redistribution and use of those materials must
+comply with that license.
+
+See THIRD_PARTY_NOTICES.md for source links and attribution.
